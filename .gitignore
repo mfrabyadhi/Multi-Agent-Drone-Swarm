@@ -173,7 +173,8 @@ cython_debug/
 *.png
 *.csv
 /*robotics*
-/*vmodel*
+/*vmodel_d*
+/vmodel-main
 /*gym*
 /*figures*
 /*result*
