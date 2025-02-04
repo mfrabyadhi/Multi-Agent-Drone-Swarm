@@ -3,11 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from gymnasium import spaces
 
-from stable_baselines3 import PPO
-from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.callbacks import EvalCallback, StopTrainingOnRewardThreshold, BaseCallback
-from stable_baselines3.common.vec_env import SubprocVecEnv
-
 import keyboard
 
 import itertools
@@ -15,7 +10,7 @@ from collections import deque
 
 
 class MultiDroneEnv(gym.Env):
-    def __init__(self, n_drones: int = 1, max_speed: float = 1.0, drone_radius: float = 0.2, world_size: float = 100.0,
+    def __init__(self, n_drones: int = 1, max_speed: float = 1.0, drone_radius: float = 0.25, world_size: float = 100.0,
         dt: float = 0.01, max_steps: int = 200, min_zoom: float = 2.0, margin: float = 1.0 ):
         '''
         Multi Drone Environment 
@@ -92,7 +87,7 @@ class MultiDroneEnv(gym.Env):
         # Figure handles for rendering
         self.fig = None
         self.ax = None
-        self.tails = queue.Queue(maxsize=5)
+        self.tails = tuple(deque(maxlen=5) for _ in range(self.n_drones))
 
         if self.render_mode != None:
             self.fig, self.ax = plt.subplots(figsize=(5, 5))
@@ -202,17 +197,15 @@ class MultiDroneEnv(gym.Env):
                 fc='red', ec='red'
             )
 
-            print("=====================================")
+            tail_range = 5
 
-            if self.step_count % 5 == 0:
-            #     Draw 5 line from previous position to current position
-                self.tails.put((self.positions_history[-2][i], self.positions_history[-1][i]))
+            if self.step_count >= tail_range and self.step_count % tail_range == 0:
+                self.tails[i].append(self.positions_history[-1][i])
 
-            # if self.step_count % 25 == 0:
-            #     tails = np.array(list(self.tails.queue))
-            #     self.ax.plot(tails[:, :, 0].T, tails[:, :, 1].T, color='black', alpha=0.5)
-                
-            print("+++++++++++++++++++++++++++++++++++++")
+            print(self.tails)
+            if self.step_count > tail_range:
+                tails = np.array(list(self.tails[i]))
+                self.ax.plot(tails[:, 0], tails[:, 1], color='blue', alpha=0.5)
 
         self.draw_debug_range()
 
@@ -314,14 +307,29 @@ class MultiDroneEnv(gym.Env):
         Checks if any pair of drones is within self.collision_distance.
         Returns True if collision is found, else False.
         """
-        distances = np.linalg.norm(np.abs(self.positions - self.positions[:, None]))
+        distances = np.linalg.norm(np.abs(self.positions - self.positions[:, None]), axis = 2)
+        distances[distances == 0] = np.inf
 
-        ret = bool((distances < self.collision_distance).any())
+        ret = bool((distances < self.collision_distance + self.drone_radius).any())
 
         if ret:
             print("Collision detected!")
 
         return ret
+    
+    def _calculate_neighbors(self, agents):
+        """
+        Calculate neighbors for each agent.
+        """
+        pass
+    
+    def _calculate_occlusion(self, positions):
+        """
+        Calculate occlusion between agents.
+        """
+        piecewise_relatives = positions[:, None] - positions
+        distances = np.linalg.norm(piecewise_relatives, axis=2)
+        normalized_relatives = piecewise_relatives / distances[:, :, None]
     
     def draw_circle(self, center, radius, color='blue', fill=True, alpha=0.6):
         circle = plt.Circle(center, radius, color=color, fill=fill, alpha=alpha)
@@ -376,9 +384,6 @@ if __name__ == "__main__":
         
         keyboard.is_pressed("a")
         keys = keyboard._pressed_events.keys()
-        
-        if(len(keys) > 0):
-            print(keys)
 
         if 16 in keys:
             break
